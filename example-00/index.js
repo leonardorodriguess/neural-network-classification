@@ -45,7 +45,7 @@ async function trainModel(inputXs, outputYs) {
     // Qualquer coisa em que a resposta certa é "apenas uma entre várias opções" (multi-classe)
 
     model.compile({
-        optimizer: 'adam' ,
+        optimizer: 'adam',
         loss: 'categoricalCrossentropy', // função de perda para classificação multi-classe
         metrics: ['accuracy'] // métrica de avaliação do modelo
     });
@@ -60,12 +60,26 @@ async function trainModel(inputXs, outputYs) {
         shuffle: true, // embaralha os dados a cada época para evitar overfitting
         callbacks: {
             onEpochEnd: (epoch, logs) => {
-                console.log(`Época ${epoch + 1}: loss = ${logs.loss.toFixed(4)}, accuracy = ${logs.acc.toFixed(4)}`);
+                //console.log(`Época ${epoch + 1}: loss = ${logs.loss.toFixed(4)}, accuracy = ${logs.acc.toFixed(4)}`);
             }
         }
     })
 
     return model;
+}
+
+async function predict(model, pessoa) {
+    // transformar o array js para o tensor do tensorflow (tfjs)
+    const tfInput = tf.tensor2d(pessoa);
+
+    // Faz a predição (output será um vetor de 3 probabilidades)
+    const pred = model.predict(tfInput);
+
+    // Converte o tensor de saída para array js
+    const predArray = await pred.array();
+
+    return predArray[0].map((prob, index) => ({ prob, index }));
+
 }
 
 // Exemplo de pessoas para treino (cada pessoa com idade, cor e localização)
@@ -107,5 +121,28 @@ const outputYs = tf.tensor2d(tensorLabels)
 // Criamos o modelo sequencial
 // quanto mais dados melhor
 // assim o algorimo consegue entender melhor o padrão e fazer previsões mais precisas
-const models = trainModel(inputXs, outputYs);   
+const model = await trainModel(inputXs, outputYs);
 
+const pessoa = { nome: "zé", idade: 28, cor: "verde", localizacao: "Curitiba" }
+// Normalizando a idade da nova pessoa o mesmo padrão do treino
+// Exemplo: idade_min = 25, idade_max = 40, entao (28-25)/(40-25) = 0.2
+
+const pessoaTensorNormalizado = [
+    [
+        0.2, // idade normalizada
+        0,   // azul
+        0,   // vermelho
+        1,   // verde
+        0,   // São Paulo
+        0,   // Rio
+        1    // Curitiba
+    ]
+]
+
+const predictions = await predict(model, pessoaTensorNormalizado);
+const result = predictions
+                    .sort((a, b) => b.prob - a.prob)
+                    .map((p) => `${labelsNomes[p.index]}: ${(p.prob * 100).toFixed(2)}%`)
+                    .join("\n")
+
+console.log(result)
