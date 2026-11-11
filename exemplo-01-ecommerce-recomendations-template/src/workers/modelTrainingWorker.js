@@ -15,8 +15,8 @@ function makeContext(catalog, users) {
     const minAge = Math.min(...ages);
     const maxAge = Math.max(...ages);
 
-    const minValue = Math.min(...prices);
-    const maxValue = Math.max(...prices);
+    const minPrice = Math.min(...prices);
+    const maxPrice = Math.max(...prices);
 
     const colors = [...new Set(catalog.map(p => p.color))];
     const categories = [...new Set(catalog.map(p => p.category))];
@@ -52,6 +52,21 @@ function makeContext(catalog, users) {
             return [product.name, normalize(avg, minAge, maxAge)];
         })
     )
+
+    return {
+        catalog,
+        users,
+        colorIndex,
+        categoryIndex,
+        productAvgageNorm,
+        minAge,
+        maxAge,
+        minPrice,
+        maxPrice,
+        numCategories: categories.length,
+        numColors: colors.length,
+        dimentions: 2 + categories.length + colors.length
+    }
 }
 
 async function trainModel({ users }) {
