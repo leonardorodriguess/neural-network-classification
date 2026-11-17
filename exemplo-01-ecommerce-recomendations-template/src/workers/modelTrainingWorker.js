@@ -3,6 +3,7 @@ import { workerEvents } from '../events/constants.js';
 
 console.log('Model training worker initialized');
 let _globalCtx = {};
+let _model = {};
 
 const WEIGHTS = {
     category: 0.4,
@@ -150,7 +151,9 @@ function createTrainingData(context) {
     }
 }
 
+function configureNeuralNetwork(trainData) {
 
+}
 
 async function trainModel({ users }) {
     console.log('Training model with users:', users)
@@ -169,6 +172,8 @@ async function trainModel({ users }) {
     _globalCtx = context;
 
     const trainData = createTrainingData(context);
+
+    _model = configureNeuralNetwork(trainData);
 
     postMessage({
         type: workerEvents.trainingLog,
