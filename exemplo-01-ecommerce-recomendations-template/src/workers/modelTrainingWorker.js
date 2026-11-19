@@ -7,7 +7,7 @@ let _model = {};
 
 const WEIGHTS = {
     category: 0.4,
-    color:0.2,
+    color: 0.2,
     price: 0.2,
     age: 0.1
 }
@@ -85,15 +85,15 @@ function encodeProduct(product, context) {
     // aplicar o peso na recomendação
     const price = tf.tensor1d([
         normalize(
-            product.price, 
-            context.minPrice, 
+            product.price,
+            context.minPrice,
             context.maxPrice
-        )  * WEIGHTS.price
+        ) * WEIGHTS.price
     ]);
 
     const age = tf.tensor1d([
         normalize(
-            context.productAvgageNorm[product.name] ?? 0.5, 
+            context.productAvgageNorm[product.name] ?? 0.5,
         ) * WEIGHTS.age
     ]);
 
@@ -112,24 +112,26 @@ function encodeProduct(product, context) {
     return tf.concat1d([price, age, category, color]);
 }
 
-function encoderUser(user, context) {
-    if(user.purchases.length) {
+function encodeUser(user, context) {
+    if (user.purchases.length) {
         return tf.stack(
             user.purchases.map(
                 product => encodeProduct(product, context)
             )
         )
-        .mean(0)
-        .reshape([1, context.dimentions]);
+            .mean(0)
+            .reshape([1, context.dimentions]);
     }
 }
 
-function createTrainingData(context) { 
+function createTrainingData(context) {
     const inputs = [];
     const labels = [];
 
-    context.users.forEach(user => {
-        const userVector = encoderUser(user, context).dataSync();
+    context.users
+    .filter(user => user.purchases.length)
+    .forEach(user => {
+        const userVector = encodeUser(user, context).dataSync();
         context.products.forEach(product => {
             const productVector = encodeProduct(product, context).dataSync();
 
@@ -151,8 +153,53 @@ function createTrainingData(context) {
     }
 }
 
-function configureNeuralNetwork(trainData) {
+async function configureNeuralNetwork(trainData) {
+    const model = tf.sequential();
 
+    model.add(tf.layers.dense({
+        inputShape: [trainData.inputDimensions],
+        units: 128,
+        activation: 'relu'
+    }));
+
+    model.add(tf.layers.dense({
+        units: 64,
+        activation: 'relu'
+    }));
+
+    model.add(tf.layers.dense({
+        units: 32,
+        activation: 'relu'
+    }));
+
+    model.add(tf.layers.dense({
+        units: 1,
+        activation: 'sigmoid'
+    }));
+
+    model.compile({
+        optimizer: tf.train.adam(0.01),
+        loss: 'binaryCrossentropy',
+        metrics: ['accuracy']
+    })
+
+    await model.fit(trainData.xs, trainData.ys,
+        {
+            epochs: 100, // Número de épocas de treinamento
+            batchSize: 32, // Tamanho do lote
+            shuffle: true, // Embaralhar os dados a cada época
+            callbacks: {
+                onEpochEnd: (epoch, logs) => {
+                    postMessage({
+                        type: workerEvents.trainingLog,
+                        epoch: epoch,
+                        loss: logs.loss,
+                        accuracy: logs.acc
+                    });
+                }
+            }
+        }
+    );
 }
 
 async function trainModel({ users }) {
@@ -164,7 +211,7 @@ async function trainModel({ users }) {
     context.productVectors = products.map(product => {
         return {
             name: product.name,
-            meta: {...product},
+            meta: { ...product },
             vector: encodeProduct(product, context)
         }
     })
@@ -173,7 +220,7 @@ async function trainModel({ users }) {
 
     const trainData = createTrainingData(context);
 
-    _model = configureNeuralNetwork(trainData);
+    _model = await configureNeuralNetwork(trainData);
 
     postMessage({
         type: workerEvents.trainingLog,
@@ -182,12 +229,9 @@ async function trainModel({ users }) {
         accuracy: 1
     });
 
-    setTimeout(() => {
-        postMessage({ type: workerEvents.progressUpdate, progress: { progress: 100 } });
-        postMessage({ type: workerEvents.trainingComplete });
-    }, 1000);
 
-
+    postMessage({ type: workerEvents.progressUpdate, progress: { progress: 100 } });
+    postMessage({ type: workerEvents.trainingComplete });
 }
 function recommend(user, ctx) {
     console.log('will recommend for user:', user)
