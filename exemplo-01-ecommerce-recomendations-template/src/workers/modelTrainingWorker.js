@@ -3,7 +3,7 @@ import { workerEvents } from '../events/constants.js';
 
 console.log('Model training worker initialized');
 let _globalCtx = {};
-let _model = {};
+let _model = null;
 
 const WEIGHTS = {
     category: 0.4,
@@ -122,6 +122,13 @@ function encodeUser(user, context) {
             .mean(0)
             .reshape([1, context.dimentions]);
     }
+
+    return tf.concat1d([
+        tf.zeros([1]), // price
+        tf.tensor1d(user.age, context.minAge, context.maxAge) * WEIGHTS.age, // age
+        tf.zeros([context.numCategories]),
+        tf.zeros([context.numColors])
+    ])
 }
 
 function createTrainingData(context) {
@@ -200,6 +207,8 @@ async function configureNeuralNetwork(trainData) {
             }
         }
     );
+
+    return model;
 }
 
 async function trainModel({ users }) {
@@ -233,7 +242,19 @@ async function trainModel({ users }) {
     postMessage({ type: workerEvents.progressUpdate, progress: { progress: 100 } });
     postMessage({ type: workerEvents.trainingComplete });
 }
-function recommend(user, ctx) {
+function recommend({user }) {
+    if(!_model) return;
+    const context = _globalCtx;
+     
+    const userTensor = encodeUser(user, context).dataSync();
+
+    // não é ideal deixar em memória, mas para simplificar vamos fazer assim
+    const inputs = context.productVectors.map(({ vector }) => {
+        return [...userTensor, ...vector] //testar probabilidade deste usuario comprar este produto
+    });
+
+    const inputTensor = tf.tensor2d(inputs);
+
     console.log('will recommend for user:', user)
     // postMessage({
     //     type: workerEvents.recommend,
