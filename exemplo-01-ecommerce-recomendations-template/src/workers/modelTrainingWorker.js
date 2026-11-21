@@ -115,7 +115,7 @@ function encodeProduct(product, context) {
 function encodeUser(user, context) {
     if (user.purchases.length) {
         return tf.stack(
-            user.purchases.map(
+            user.purchases?.map(
                 product => encodeProduct(product, context)
             )
         )
@@ -221,7 +221,7 @@ async function trainModel({ users }) {
         return {
             name: product.name,
             meta: { ...product },
-            vector: encodeProduct(product, context)
+            vector: encodeProduct(product, context).dataSync()
         }
     })
 
@@ -242,19 +242,36 @@ async function trainModel({ users }) {
     postMessage({ type: workerEvents.progressUpdate, progress: { progress: 100 } });
     postMessage({ type: workerEvents.trainingComplete });
 }
+
+
 function recommend({user }) {
     if(!_model) return;
     const context = _globalCtx;
-     
+    
     const userTensor = encodeUser(user, context).dataSync();
-
+    
     // não é ideal deixar em memória, mas para simplificar vamos fazer assim
     const inputs = context.productVectors.map(({ vector }) => {
-        return [...userTensor, ...vector] //testar probabilidade deste usuario comprar este produto
+        //testar probabilidade deste usuario comprar este produto
+        return [...userTensor, ...vector] 
     });
 
     const inputTensor = tf.tensor2d(inputs);
+    const prediction = _model.predict(inputTensor);
 
+    const scores = prediction.dataSync();
+
+    const recommendations = context.productVectors.map((item, index) => {
+        return {
+            ...item.meta,
+            name: item.name,
+            score: scores[index]
+        }
+    })
+
+
+    const sortedItems =  recommendations.sort((a, b) => b.score - a.score);
+    
     console.log('will recommend for user:', user)
     // postMessage({
     //     type: workerEvents.recommend,
@@ -266,7 +283,7 @@ function recommend({user }) {
 
 const handlers = {
     [workerEvents.trainModel]: trainModel,
-    [workerEvents.recommend]: d => recommend(d.user, _globalCtx),
+    [workerEvents.recommend]: recommend,
 };
 
 self.onmessage = e => {
